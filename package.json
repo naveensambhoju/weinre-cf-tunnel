@@ -9,6 +9,9 @@
     "dependencies": {
       "weinre": "^2.0.0-pre-I0Z7U9OV",
       "cloudflared": "0.7.0"
-    }
+    },
+      "engines": {
+        "node": "14.x"
+      }
   }
   
