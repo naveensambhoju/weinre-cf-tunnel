@@ -3,8 +3,6 @@ const readline = require("readline");
 const path = require("path");
 
 const WEINRE_PORT = 8080;
-
-// Use local cloudflared binary
 const CLOUDFLARED_BIN = path.join(
   __dirname,
   "node_modules",
@@ -12,14 +10,13 @@ const CLOUDFLARED_BIN = path.join(
   process.platform === "win32" ? "cloudflared.cmd" : "cloudflared"
 );
 
-(async () => {
-  // Start Weinre
+function startServer() {
+  console.log("🚀 Starting Weinre + Cloudflared...");
+
   const weinre = spawn(
     "weinre",
     ["--httpPort", WEINRE_PORT, "--boundHost", "-all-"],
-    {
-      stdio: "inherit",
-    }
+    { stdio: "inherit" }
   );
 
   weinre.on("error", (err) => {
@@ -27,40 +24,46 @@ const CLOUDFLARED_BIN = path.join(
   });
 
   weinre.on("exit", (code) => {
-    console.log(`ℹ️ Weinre exited with code ${code}`);
+    console.error(`💥 Weinre exited with code ${code}. Restarting...`);
+    setTimeout(startServer, 2000);
   });
 
-  // Wait a bit before starting tunnel
-  await new Promise((r) => setTimeout(r, 1000));
+  // Delay before tunnel
+  setTimeout(() => {
+    const cloudflared = spawn(CLOUDFLARED_BIN, [
+      "tunnel",
+      "--url",
+      `http://localhost:${WEINRE_PORT}`,
+    ]);
 
-  // Start cloudflared tunnel
-  const cloudflared = spawn(CLOUDFLARED_BIN, [
-    "tunnel",
-    "--url",
-    `http://localhost:${WEINRE_PORT}`,
-  ]);
+    const rl = readline.createInterface({ input: cloudflared.stdout });
 
-  const rl = readline.createInterface({ input: cloudflared.stdout });
+    rl.on("line", (line) => {
+      const match = line.match(/https:\/\/.*\.trycloudflare\.com/);
+      if (match) {
+        const url = match[0];
+        console.log(
+          "\n✅ Weinre server is running and exposed via Cloudflare Tunnel:"
+        );
+        console.log(`🔍 Debug client: ${url}/client`);
+        console.log(
+          `📦 Target script: <script src="${url}/target/target-script-min.js#anonymous"></script>\n`
+        );
+      }
+    });
 
-  rl.on("line", (line) => {
-    const match = line.match(/https:\/\/.*\.trycloudflare\.com/);
-    if (match) {
-      const url = match[0];
-      console.log(
-        "\n✅ Weinre server is running and exposed via Cloudflare Tunnel:"
+    cloudflared.stderr.on("data", (data) => {
+      console.error(`❌ cloudflared error: ${data}`);
+    });
+
+    cloudflared.on("exit", (code) => {
+      console.error(
+        `💥 Cloudflared exited with code ${code}. Restarting server...`
       );
-      console.log(`🔍 Debug client: ${url}/client`);
-      console.log(
-        `📦 Target script: <script src="${url}/target/target-script-min.js#anonymous"></script>\n`
-      );
-    }
-  });
+      weinre.kill();
+      setTimeout(startServer, 2000);
+    });
+  }, 1000);
+}
 
-  cloudflared.stderr.on("data", (data) => {
-    console.error(`❌ cloudflared error: ${data}`);
-  });
-
-  cloudflared.on("exit", (code) => {
-    console.log(`ℹ️ Cloudflared tunnel exited with code ${code}`);
-  });
-})();
+startServer();
