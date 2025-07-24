@@ -13,10 +13,22 @@ const CLOUDFLARED_BIN = path.join(
 function startServer() {
   console.log("🚀 Starting Weinre + Cloudflared...");
 
+  const weinreMain = require.resolve("weinre");
+
   const weinre = spawn(
-    "weinre",
-    ["--httpPort", WEINRE_PORT, "--boundHost", "-all-"],
-    { stdio: "inherit" }
+    process.execPath, // equivalent to `node`
+    [
+      "--require",
+      path.join(__dirname, "weinre-patch.js"),
+      weinreMain,
+      "--httpPort",
+      WEINRE_PORT,
+      "--boundHost",
+      "-all-",
+    ],
+    {
+      stdio: "inherit",
+    }
   );
 
   weinre.on("error", (err) => {
